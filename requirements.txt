@@ -1,3 +1,4 @@
 gpxpy
 matplotlib
 python-dateutil
+scipy
