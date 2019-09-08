@@ -2,3 +2,4 @@ gpxpy
 matplotlib
 python-dateutil
 scipy
+ppretty

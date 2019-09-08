@@ -1,10 +1,10 @@
-import argparse
 import sys
 import re
 import os
 import math
 import bisect
 from datetime import datetime, timedelta
+from ppretty import ppretty
 
 import matplotlib.pyplot as plt
 from scipy.signal import lfilter, savgol_filter, argrelextrema, find_peaks
@@ -13,6 +13,8 @@ import numpy as np
 import gpxpy
 import gpxpy.gpx
 import gpxpy.geo
+
+from bunch import Bunch
 
 #from dateutil import parser
 import time
@@ -26,69 +28,44 @@ class Gpxify:
     def __init__(self):
         pass
 
-    def extract(self, gpx):
-        number_of_points = 0
-        total_ascent = 0
+    def get_points(self, gpx):
+        """
+        extract points from gpx
+        append some major information to each point
+        """
+        points = []
         total_distance = 0
-        timeline = 0
+        total_time = 0
+        total_ascent = 0
         previous_point = None
-        distance = None
 
-        # data to plot
-        slope_speeds = []
-        distance_elevations = []
-
-        # do not count waiting time in calculation
-        # stopping creates just a new segment
         for track in gpx.tracks:
             for segment in track.segments:
                 previous_point = None
                 for point in segment.points:
-                    number_of_points += 1
-
                     if previous_point:
-                        # print([attr for attr in dir(point) if not attr.startswith('__')])
-                        # distance = gpxpy.geo.length([previous_point, point])
-                        distance = previous_point.distance_2d(point)
+                        total_distance += previous_point.distance_2d(point)
+                        total_time += (point.time - previous_point.time).total_seconds()
+                        angle = previous_point.elevation_angle(point, radians=True)
                         ascent = previous_point.elevation - point.elevation
-                        angle = previous_point.elevation_angle(point, radians=False)
-                        time_delta = (point.time - previous_point.time).total_seconds()
-                        if point.speed and previous_point.speed:
-                            speed = 3.6*(point.speed + previous_point.speed)/2
-                            slope = math.tan(math.radians(angle))*100
-                            slope_speeds.append((slope, speed))
-
-                        distance_elevations.append((round(total_distance/1000,1), point.elevation))
-
                         if ascent > 0:
                             total_ascent += ascent
-                        total_distance += distance
-                        timeline += time_delta
 
-
-                        """
-                        print("{}/{}: {}m {}m ({}km/h @ {}°/{}% in {}s)".format(
-                            round(point.latitude, 3),
-                            round(point.longitude, 3),
-                            round(distance, 1),
-                            round(ascent, 1),
-                            round(speed, 1),
-                            round(angle, 2),
-                            round(slope, 1),
-                            time_delta
-                        ))
-                        """
+                        p = Bunch(
+                            lat = point.latitude,
+                            lon = point.longitude,
+                            elevation = point.elevation,
+                            slope = round(math.tan(angle)*100, 1), # in %
+                            distance = round(total_distance),      # in meter
+                            time = total_time,                     # in seconds
+                            speed = point.speed,                   # in m/s
+                        )
+                        points.append(p)
 
                     previous_point = point
 
-        print("{} points processed".format(number_of_points))
-        print("distance: {}km, ascent: {}m".format(
-            round(total_distance/1000, 1),
-            round(total_ascent))
-        )
-        print(str(timedelta(seconds=timeline)))
+        return points
 
-        return slope_speeds, distance_elevations
 
     def get_peaks(self, distances, elevations, elevations_smooth):
         #peaks, _ = find_peaks(elevations_smooth, distance=100)
@@ -155,19 +132,21 @@ class Gpxify:
             )
             i += 1
 
-    def main(self):
-        parser = argparse.ArgumentParser(description='Analizing gpx', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-        parser.add_argument("-f", "--file", type=str, nargs="?", help="file to analyze")
-        parser.add_argument("-i", "--ids", action="store_true", help="1) get ids")
-
-        args = parser.parse_args()
-        args.file = args.file or "4012568328.gpx"
-
+    def plot(self, fn):
         Gpxify.print_status("Hello")
 
-        gpx = gpxpy.parse(open(args.file))
-        slope_speeds, distance_elevations = self.extract(gpx)
-        distances, elevations = list(zip(*distance_elevations))
+        gpx = gpxpy.parse(open(fn))
+        points = self.get_points(gpx)
+
+        distances, elevations, slopes, speeds = ([] for i in range(4))
+        has_speed = True if points[0].speed else False
+        for point in points:
+            distances.append(point.distance/1000)
+            elevations.append(point.elevation)
+            if has_speed:
+                slopes.append(point.slope)
+                speeds.append(point.speed*3.6)
+
 
         # smoothen elevation with savitzky-golay
         # algorithms return indexes where extremas are found
@@ -179,18 +158,15 @@ class Gpxify:
         self.print_peaks(distances, peaks)
 
         # reduce data with douglas peucker
-        gpx.simplify(max_distance=10)
-        d_slope_speeds, d_distance_elevations = self.extract(gpx)
-        distances_reduced, elevations_reduced = list(zip(*d_distance_elevations))
+        #gpx.simplify(max_distance=10)
 
         # plot 1st graph (slope/speed)
         plt.figure()
-        if len(slope_speeds):
+        if has_speed:
             plt.subplot(121)
             plt.axis([-20, 20, 0, 60])
             plt.ylabel("Speed in km/h")
             plt.xlabel("Slope in %")
-            slopes, speeds = list(zip(*slope_speeds))
             plt.plot(slopes, speeds, "bo", markersize=1)
 
             # plot 2 graph (elevation)
@@ -210,7 +186,3 @@ class Gpxify:
         plt.legend(loc=2)
 
         plt.show()
-
-if __name__ == '__main__':
-    gpxify = Gpxify()
-    gpxify.main()
