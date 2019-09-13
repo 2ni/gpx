@@ -3,3 +3,4 @@ matplotlib
 python-dateutil
 scipy
 ppretty
+Unidecode

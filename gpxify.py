@@ -3,6 +3,7 @@ import re
 import os
 import math
 import bisect
+import unidecode
 from datetime import datetime, timedelta
 from ppretty import ppretty
 
@@ -22,6 +23,8 @@ import time
 
 class Gpxify:
 
+    allowed_coursepoint_types = ["Generic", "Summit", "Valley", "Water", "Food", "Danger", "Left", "Right", "Straight", "First Aid"]
+
     @staticmethod
     def print_status(msg, *args, **kwargs):
         print("{} - {}".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg), *args, **kwargs)
@@ -29,6 +32,17 @@ class Gpxify:
     def __init__(self, fn):
         self.fn = fn
         self.points = self.load_points()
+
+        # smoothen elevation with savitzky-golay
+        self.add_smooth_elevation()
+
+        # get hills, valleys
+        # https://stackoverflow.com/questions/37598986/reducing-noise-on-data
+        # needs smoothed elevation
+        self.mark_peaks()
+
+        # reduce data with douglas peucker
+        self.reduced_points = dp.reduce(self.points)
 
     def parse_points(self, gpx):
         """
@@ -100,24 +114,27 @@ class Gpxify:
                 elevation = elevations[index_h] - elevations[index_v]
                 # suppress small hills
                 if elevation > 20:
-                    self.points[index_v].type = "valley"
+                    self.points[index_v].type = "Valley"
                     self.points[index_v].desc =  "{elevation}m/{distance}km".format(
                         elevation = round(elevation),
                         distance = round(distances[index_h] - distances[index_v], 1)
                     )
-                    self.points[index_h].type = "hill"
+                    self.points[index_h].type = "Summit"
                     self.points[index_h].desc = "{}m".format(round(elevations[index_h]))
 
                 del valleys[index]
 
 
-    def print_peaks(self):
+    def get_peaks_summary(self):
+        data = ""
         for peak in self.get_peaks():
-            print("{distance:>5}km: {desc:<12} {type}".format(
+            data += ("{distance:>5}km: {desc:<12} {type}\n".format(
                 distance = round(peak.distance/1000, 1),
                 desc = peak.desc,
                 type = peak.type
             ))
+
+        return data
 
     def get_peaks(self, type=None):
         return [ w for w in self.points if getattr(w, "type", type) ]
@@ -157,11 +174,11 @@ class Gpxify:
         """
         elevations_smooth = savgol_filter([point.elevation for point in self.points], 101, 2)
         for point, elevation_smooth in zip(self.points, elevations_smooth):
-            point.elevation_smooth = elevation_smooth
+            point.elevation_smooth = round(elevation_smooth, 3)
 
-    def plot_tracks(self, fig, reduced):
+    def plot_tracks(self, fig):
         fig.plot([p.lat for p in self.points], [p.lon for p in self.points], "-", color="silver", linewidth=8.0, alpha=.7, label="original")
-        fig.plot([p.lat for p in reduced], [p.lon for p in reduced], "-k", label="reduced")
+        fig.plot([p.lat for p in self.reduced_points], [p.lon for p in self.reduced_points], "-k", label="reduced")
 
         for peak in self.get_peaks():
             fig.plot(peak.lat, peak.lon, "r.")
@@ -176,7 +193,7 @@ class Gpxify:
             )
 
 
-        fig.set_xlabel("{}/{} point reduction".format(len(reduced), len(self.points)))
+        fig.set_xlabel("{}/{} point reduction".format(len(self.reduced_points), len(self.points)))
         fig.legend(loc=2)
 
     def plot_elevation(self, fig):
@@ -212,27 +229,109 @@ class Gpxify:
         #fig.scatter(slopes, speeds)
         fig.plot(slopes, speeds, "bo", markersize=1)
 
+    def to_tcx(self, speed):
+        """ generate tcx with waypoints from points"""
+
+        tcx_template = """
+<?xml version="1.0" encoding="UTF-8"?>
+<TrainingCenterDatabase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://www.garmin.com/xmlschemas/TrainingCenterDatabase/v2" xsi:schemaLocation="http://www.garm
+in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/TrainingCenterDatabasev2.xsd">
+<Folders>
+<Courses>
+<CourseFolder Name="{name}">
+<CourseNameRef>
+<id>{name}</id>
+</CourseNameRef>
+</CourseFolder>
+</Courses>
+</Folders>
+<Courses>
+<Course>
+<Name>{name}</Name>
+<Lap>
+<TotalTimeSeconds>{total_seconds}</TotalTimeSeconds>
+<DistanceMeters>{total_distance}</DistanceMeters>
+<Intensity>Active</Intensity>
+</Lap>
+<Track>
+{trackpoints}
+</Track>
+{coursepoints}
+</Course>
+</Courses>
+</TrainingCenterDatabase>"""
+
+        trackpoint_template = """<Trackpoint>
+<Time>{time}</Time>
+<Position>
+<LatitudeDegrees>{lat}</LatitudeDegrees>
+<LongitudeDegrees>{lon}</LongitudeDegrees>
+</Position>
+<AltitudeMeters>{altitude}</AltitudeMeters>
+<DistanceMeters>{distance}</DistanceMeters>
+</Trackpoint>"""
+
+        coursepoint_template = """<CoursePoint>
+<Name>{description}</Name>
+<Time>{time}</Time>
+<Position>
+<LatitudeDegrees>{lat}</LatitudeDegrees>
+<LongitudeDegrees>{lon}</LongitudeDegrees>
+</Position>
+<PointType>{type}</PointType>
+</CoursePoint>"""
+
+        now = datetime.now()
+        trackpoints = ""
+        coursepoints = ""
+
+        for p in self.reduced_points:
+            time = datetime.strftime(now + timedelta(seconds=p.distance*3.6/speed), gpxpy.gpx.DATE_FORMAT)
+            trackpoints += trackpoint_template.format(
+                time = time,
+                lat = round(p.lat, 6),
+                lon = round(p.lon, 6),
+                altitude = p.elevation,
+                distance = round(p.distance, 3)
+            )
+
+            if getattr(p, "type", None) and p.type in Gpxify.allowed_coursepoint_types:
+                coursepoints += coursepoint_template.format(
+                    description = p.desc,
+                    time = time,
+                    lat = round(p.lat, 6),
+                    lon = round(p.lon, 6),
+                    type = p.type
+                )
+
+        tcx = tcx_template.format(
+            name = re.sub("^(.*?).[^.]+$", r"\1", unidecode.unidecode(self.fn)),
+            total_seconds = round(self.points[-1].distance * 3.6 / speed),
+            total_distance = self.points[-1].distance,
+            trackpoints = trackpoints,
+            coursepoints = coursepoints
+        )
+
+        # write tcx to file
+        fn = open(re.sub("^(.*?).[^.]+$", r"\1.tcx", os.path.abspath(self.fn)), "w")
+        fn.write(tcx)
+        fn.close()
+
+
     def plot(self):
         Gpxify.print_status("Hello")
 
         print(self.get_summary())
+        print(self.get_peaks_summary())
 
-        # smoothen elevation with savitzky-golay
-        self.add_smooth_elevation()
-
-        # get hills, valleys
-        # https://stackoverflow.com/questions/37598986/reducing-noise-on-data
-        self.mark_peaks()
-        self.print_peaks()
+        self.to_tcx(27)
 
         has_speed = True if self.points[0].speed else False
         fig, ax = plt.subplots(nrows=1, ncols=3 if has_speed else 2, squeeze=False)
 
         self.plot_elevation(ax[0,0])
 
-        # reduce data with douglas peucker
-        reduced_points = dp.reduce(self.points)
-        self.plot_tracks(ax[0,1], reduced_points)
+        self.plot_tracks(ax[0,1])
 
         if has_speed:
             self.plot_speed(ax[0,2])
