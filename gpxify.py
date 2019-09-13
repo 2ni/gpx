@@ -22,6 +22,10 @@ import douglaspeucker as dp
 import time
 
 # TODO keep time of input gpx if no speed given
+# TODO keep existing waypoints
+# TODO dynamic speeds
+# TODO group speed/slope by amount if speed rounded and darken color
+# TODO make path where hills red in lat/lon graph
 class Gpxify:
 
     allowed_coursepoint_types = ["Generic", "Summit", "Valley", "Water", "Food", "Danger", "Left", "Right", "Straight", "First Aid"]
