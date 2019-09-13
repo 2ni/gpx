@@ -21,6 +21,7 @@ import douglaspeucker as dp
 #from dateutil import parser
 import time
 
+# TODO keep time of input gpx if no speed given
 class Gpxify:
 
     allowed_coursepoint_types = ["Generic", "Summit", "Valley", "Water", "Food", "Danger", "Left", "Right", "Straight", "First Aid"]
@@ -29,8 +30,9 @@ class Gpxify:
     def print_status(msg, *args, **kwargs):
         print("{} - {}".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg), *args, **kwargs)
 
-    def __init__(self, fn):
+    def __init__(self, fn, speed):
         self.fn = fn
+        self.avg_speed = speed
         self.points = self.load_points()
 
         # smoothen elevation with savitzky-golay
@@ -229,7 +231,7 @@ class Gpxify:
         #fig.scatter(slopes, speeds)
         fig.plot(slopes, speeds, "bo", markersize=1)
 
-    def to_tcx(self, speed):
+    def to_tcx(self):
         """ generate tcx with waypoints from points"""
 
         tcx_template = """
@@ -286,7 +288,7 @@ in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/Tra
         coursepoints = ""
 
         for p in self.reduced_points:
-            time = datetime.strftime(now + timedelta(seconds=p.distance*3.6/speed), gpxpy.gpx.DATE_FORMAT)
+            time = datetime.strftime(now + timedelta(seconds=p.distance*3.6/self.avg_speed), gpxpy.gpx.DATE_FORMAT)
             trackpoints += trackpoint_template.format(
                 time = time,
                 lat = round(p.lat, 6),
@@ -306,7 +308,7 @@ in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/Tra
 
         tcx = tcx_template.format(
             name = re.sub("^(.*?).[^.]+$", r"\1", unidecode.unidecode(self.fn)),
-            total_seconds = round(self.points[-1].distance * 3.6 / speed),
+            total_seconds = round(self.points[-1].distance * 3.6 / self.avg_speed),
             total_distance = self.points[-1].distance,
             trackpoints = trackpoints,
             coursepoints = coursepoints
@@ -324,7 +326,7 @@ in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/Tra
         print(self.get_summary())
         print(self.get_peaks_summary())
 
-        self.to_tcx(27)
+        self.to_tcx()
 
         has_speed = True if self.points[0].speed else False
         fig, ax = plt.subplots(nrows=1, ncols=3 if has_speed else 2, squeeze=False)
