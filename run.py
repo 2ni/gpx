@@ -10,5 +10,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     args.file = args.file or "4012568328.gpx"
 
-    gpxify = Gpxify()
-    gpxify.plot(args.file)
+    gpxify = Gpxify(args.file)
+    gpxify.plot()
