@@ -26,6 +26,8 @@ import time
 # TODO dynamic speeds
 # TODO group speed/slope by amount if speed rounded and darken color
 # TODO make path where hills red in lat/lon graph
+# TODO make calculation of  distance point - line faster
+# https://www.triangle-calculator.com/?what=vc&a=1&a1=1&3dd=3D&a2=&b=3&b1=3&b2=&c=3&c1=4&c2=&submit=Solve&3d=0
 class Gpxify:
 
     allowed_coursepoint_types = ["Generic", "Summit", "Valley", "Water", "Food", "Danger", "Left", "Right", "Straight", "First Aid"]
@@ -184,7 +186,26 @@ class Gpxify:
 
     def plot_tracks(self, fig):
         fig.plot([p.lat for p in self.points], [p.lon for p in self.points], "-", color="silver", linewidth=8.0, alpha=.7, label="original")
-        fig.plot([p.lat for p in self.reduced_points], [p.lon for p in self.reduced_points], "-k", label="reduced")
+        # fig.plot([p.lat for p in self.reduced_points], [p.lon for p in self.reduced_points], "-k", label="reduced")
+        lats = []
+        lons = []
+        label_set = 0
+        for p in self.reduced_points:
+            lats.append(p.lat)
+            lons.append(p.lon)
+            type = getattr(p, "type", None)
+            if type:
+                label = None
+                if label_set < 2:
+                    label_set += 1
+                    label = "smooth{}".format("" if type == "Valley" else " climbing")
+                fig.plot(lats, lons, "-", color="black" if type == "Valley" else "red", label=label)
+                lats = [p.lat]
+                lons = [p.lon]
+
+        if lats:
+            fig.plot(lats, lons, "-", color="black")
+
 
         for peak in self.get_peaks():
             fig.plot(peak.lat, peak.lon, "r.")
@@ -197,7 +218,6 @@ class Gpxify:
                 xytext=(0,3),
                 ha="left"
             )
-
 
         fig.set_xlabel("{}/{} point reduction".format(len(self.reduced_points), len(self.points)))
         fig.legend(loc=2)
