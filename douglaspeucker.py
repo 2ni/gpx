@@ -113,16 +113,39 @@ def reduce(points, distance=10):
     max_distance = 0
     max_index = 1
 
+    """
+    use simplified (faster) distance calculation by
+    using cartesian coordinates (ok for our case)
+    see https://en.m.wikipedia.org/wiki/Distance_from_a_point_to_a_line
+    (it's not the exact distance, we only use it to *find* the point with the max distance)
+    y2 = end.lat
+    y1 = start.lat
+    y0 = point.lat
+    x2 = end.lon
+    x1 = start.lon
+    x0 = point.lon
+    distance ~ abs(a*point.lon - b*point.lat + c)
+    distance ~ abs((y2-y1)*x0 - (x2-x1)*y0 + x2*y1 - y2*x1)
+    """
 
+    a = end.lat - start.lat
+    b = end.lon - start.lon
+    c = end.lon*start.lat - end.lat*start.lon
+
+    # find point with max distance
     for index in range(1, len(points)-1):
         point = points[index]
-        d = distance_to_line(point, start, end)
-        if d > max_distance:
-            max_distance = d
+        cur_distance = abs(a*point.lon - b*point.lat +c)
+        if cur_distance > max_distance:
+            max_distance = cur_distance
             max_index = index
+
+    # calculate real distance now that we found point with max distance
+    max_distance = distance_to_line(points[max_index], start, end)
 
     # maximum calculated distance is smaller than allowed distance
     # -> internal points can be ignored
+    # except waypoints and peaks
     if max_distance < distance:
         valid_points = [ point for point in points if getattr(point, "type", None) and start.distance < point.distance < end.distance ]
         valid_points.insert(0, start)

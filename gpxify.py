@@ -25,9 +25,6 @@ import time
 # TODO keep existing waypoints
 # TODO dynamic speeds
 # TODO group speed/slope by amount if speed rounded and darken color
-# TODO make path where hills red in lat/lon graph
-# TODO make calculation of  distance point - line faster
-# https://www.triangle-calculator.com/?what=vc&a=1&a1=1&3dd=3D&a2=&b=3&b1=3&b2=&c=3&c1=4&c2=&submit=Solve&3d=0
 class Gpxify:
 
     allowed_coursepoint_types = ["Generic", "Summit", "Valley", "Water", "Food", "Danger", "Left", "Right", "Straight", "First Aid"]
