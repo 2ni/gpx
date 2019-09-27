@@ -33,9 +33,10 @@ class Gpxify:
     def print_status(msg, *args, **kwargs):
         print("{} - {}".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"), msg), *args, **kwargs)
 
-    def __init__(self, fn, speed):
+    def __init__(self, fn, speed, min_size_peak):
         self.fn = fn
         self.avg_speed = speed
+        self.min_size_peak = min_size_peak
         self.points = self.load_points()
 
         # smoothen elevation with savitzky-golay
@@ -45,6 +46,8 @@ class Gpxify:
         # https://stackoverflow.com/questions/37598986/reducing-noise-on-data
         # needs smoothed elevation
         self.mark_peaks()
+
+        #print([ p.type for p in self.points if getattr(p, "type", None) ])
 
         # reduce data with douglas peucker
         self.reduced_points = dp.reduce(self.points)
@@ -60,13 +63,23 @@ class Gpxify:
         total_ascent = 0
         previous_point = None
 
+        """
+        for wp in gpx.waypoints:
+            print(ppretty(wp, seq_length=20))
+        sys.exit(0)
+        """
+
         for track in gpx.tracks:
             for segment in track.segments:
                 previous_point = None
                 for point in segment.points:
                     if previous_point:
                         total_distance += previous_point.distance_2d(point)
-                        total_time += (point.time - previous_point.time).total_seconds()
+                        if point.time:
+                            total_time += (point.time - previous_point.time).total_seconds()
+                        else:
+                            total_time = total_distance*3.6 / self.avg_speed
+
                         angle = previous_point.elevation_angle(point, radians=True)
                         ascent = previous_point.elevation - point.elevation
                         if ascent > 0:
@@ -89,6 +102,9 @@ class Gpxify:
 
 
     def mark_peaks(self):
+        """
+        https://github.com/MonsieurV/py-findpeaks
+        """
 
         distances, elevations, elevations_smooth = ([] for i in range(3))
         for point in self.points:
@@ -97,11 +113,12 @@ class Gpxify:
             elevations_smooth.append(point.elevation_smooth)
 
         elevations_smooth = np.array(elevations_smooth)
-        number_of_points = len(elevations_smooth)
-        number_of_points_to_consider = round(number_of_points/50)
 
-        hills = list(argrelextrema(elevations_smooth, np.greater, order=number_of_points_to_consider)[0])
-        valleys = list(argrelextrema(elevations_smooth, np.less, order=number_of_points_to_consider)[0])
+        hills = list(find_peaks(elevations_smooth, prominence=1)[0])
+        valleys = list(find_peaks([i*-1 for i in elevations_smooth], prominence=1)[0])
+
+        if len(hills) == 0 or len(valleys) == 0:
+            return
 
         # always start with a valley
         if hills[0] < valleys[0]:
@@ -118,7 +135,7 @@ class Gpxify:
                 #print("{}->{}".format(index_v, index_h))
                 elevation = elevations[index_h] - elevations[index_v]
                 # suppress small hills
-                if elevation > 20:
+                if elevation > self.min_size_peak:
                     self.points[index_v].type = "Valley"
                     self.points[index_v].desc =  "{elevation}m/{distance}km".format(
                         elevation = round(elevation),
@@ -179,7 +196,7 @@ class Gpxify:
         """
         elevations_smooth = savgol_filter([point.elevation for point in self.points], 101, 2)
         for point, elevation_smooth in zip(self.points, elevations_smooth):
-            point.elevation_smooth = round(elevation_smooth, 3)
+            point.elevation_smooth = round(elevation_smooth, 1)
 
     def plot_tracks(self, fig):
         fig.plot([p.lat for p in self.points], [p.lon for p in self.points], "-", color="silver", linewidth=8.0, alpha=.7, label="original")
@@ -350,7 +367,7 @@ in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/Tra
         self.to_tcx()
 
         has_speed = True if self.points[0].speed else False
-        fig, ax = plt.subplots(nrows=1, ncols=3 if has_speed else 2, squeeze=False)
+        fig, ax = plt.subplots(figsize=(20, 10), nrows=1, ncols=3 if has_speed else 2, squeeze=False)
 
         self.plot_elevation(ax[0,0])
 
