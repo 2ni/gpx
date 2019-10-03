@@ -39,7 +39,7 @@ def euclid_distance(start, end):
 
     distance = ONE_DEGREE * math.sqrt(x*x + y*y)
 
-    if start.elevation and end.elevation:
+    if getattr(start, "elevation", None) and getattr(end, "elevation", None):
         math.sqrt(distance ** 2, (end.elevation - start.elevation) ** 2)
 
     return distance
