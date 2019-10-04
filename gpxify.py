@@ -410,13 +410,16 @@ in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/Tra
     def plot(self):
         Gpxify.print_status("Hello")
 
-        print(self.get_summary())
+        summary = self.get_summary()
+        print(summary)
         print(self.get_peaks_summary())
 
         self.to_tcx()
 
         has_speed = True if self.points[0].speed else False
         fig, ax = plt.subplots(figsize=(20, 10), nrows=1, ncols=3 if has_speed else 2, squeeze=False)
+
+        fig.suptitle(summary)
 
         self.plot_elevation(ax[0, 0])
 
