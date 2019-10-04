@@ -30,7 +30,7 @@ distance: 55.5km, elevation: 450m, time: 02:03:20, avg speed: 27.0km/h
  53.8km: 534m         Summit
 ```
 
-see ![example output](example.png)
+![example output](example.png)
 
 ## Of interest
 - https://github.com/tkrajina/gpxpy/blob/master/gpxpy/geo.py
