@@ -395,7 +395,7 @@ in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/Tra
                 )
 
         tcx = tcx_template.format(
-            name=re.sub("^(.*?).[^.]+$", r"\1", unidecode.unidecode(self.fn)),
+            name=re.sub("^(.*?).[^.]+$", r"\1", unidecode.unidecode(os.path.basename(self.fn))),
             total_seconds=round(self.points[-1].distance * 3.6 / self.avg_speed),
             total_distance=self.points[-1].distance,
             trackpoints=trackpoints,
