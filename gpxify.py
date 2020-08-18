@@ -68,7 +68,7 @@ class Gpxify:
         waypoints = []
         for wp in gpx.waypoints:
             p = Bunch(
-                name=wp.name,
+                name=wp.name.replace("&", "+"),  # & breaks the tcx
                 lat=wp.latitude,
                 lon=wp.longitude,
                 type="Generic",
@@ -116,7 +116,7 @@ class Gpxify:
         # print out missed waypoints
         missed_waypoints = []
         for waypoint in waypoints:
-            if waypoint.nearest_dist < 30:
+            if waypoint.nearest_dist < 100:
                 points[waypoint.nearest_index].type = waypoint.type
                 points[waypoint.nearest_index].desc = waypoint.name
             else:
