@@ -77,14 +77,18 @@ class Gpxify:
             )
             waypoints.append(p)
 
+        points_count = 0
+        points_count_withtime = 0
         for track in gpx.tracks:
             for segment in track.segments:
                 previous_point = None
                 for point in segment.points:
                     if previous_point:
+                        points_count += 1
                         # TODO compare to dp.euclid_distance(previous_point, point)
                         total_distance += previous_point.distance_2d(point)
                         if point.time:
+                            points_count_withtime += 1
                             total_time += (point.time - previous_point.time).total_seconds()
                         else:
                             total_time = total_distance * 3.6 / self.avg_speed
@@ -112,6 +116,8 @@ class Gpxify:
                                 waypoint.nearest_index = len(points) - 1
 
                     previous_point = point
+
+        print("{}/{} points with given time".format(points_count_withtime, points_count))
 
         # print out missed waypoints
         missed_waypoints = []
@@ -408,7 +414,7 @@ in.com/xmlschemas/TrainingCenterDatabase/v2 http://www.garmin.com/xmlschemas/Tra
         fn.close()
 
     def plot(self):
-        Gpxify.print_status("Hello")
+        # Gpxify.print_status("Hello")
 
         summary = self.get_summary()
         print(summary)
